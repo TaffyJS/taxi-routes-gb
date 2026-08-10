@@ -126,14 +126,9 @@ function MapPanel({ selected }: { selected: StudyItem | string }) {
         </div>
         <a href={searchUrl} target="_blank" rel="noreferrer">Отвори в OSM</a>
       </div>
-      <div className="map-frame">
-        <iframe title={`Карта за ${query}`} src={src} loading="lazy" />
-        <div className={`visual-pin ${marker ? "" : "fallback"}`} aria-hidden="true">
-          <span />
-        </div>
-      </div>
+      <iframe title={`Карта за ${query}`} src={src} loading="lazy" />
       <p className="map-note">
-        {loading ? "Търся точен маркер..." : marker ? "Маркерът е центриран върху намереното място." : "Показана е карта на Габрово с ориентировъчен маркер. Отвори търсенето за по-точна позиция."}
+        {loading ? "Търся точна позиция..." : marker ? "Картата е центрирана върху намереното място." : "Показана е карта на Габрово. Отвори търсенето за по-точна позиция."}
       </p>
     </section>
   );

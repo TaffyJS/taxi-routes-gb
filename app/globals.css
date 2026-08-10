@@ -270,52 +270,13 @@ dd {
   text-decoration: none;
 }
 
-.map-frame {
-  position: relative;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: #e5e0d5;
-}
-
 iframe {
   width: 100%;
   height: 520px;
   border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: #e5e0d5;
-}
-
-.visual-pin {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 34px;
-  height: 44px;
-  transform: translate(-50%, -100%);
-  pointer-events: none;
-  filter: drop-shadow(0 8px 12px rgba(29, 27, 22, 0.28));
-  z-index: 2;
-}
-
-.visual-pin span {
-  display: block;
-  width: 34px;
-  height: 34px;
-  border: 3px solid #fff;
-  border-radius: 50% 50% 50% 0;
-  background: var(--red);
-  transform: rotate(-45deg);
-}
-
-.visual-pin span::after {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border-radius: 50%;
-  background: #fff;
-}
-
-.visual-pin.fallback {
-  opacity: 0.82;
 }
 
 .map-note {
