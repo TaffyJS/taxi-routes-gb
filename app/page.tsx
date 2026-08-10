@@ -109,7 +109,12 @@ function MapPanel({ selected }: { selected: StudyItem | string }) {
   }, [query]);
 
   const src = marker
-    ? `https://www.openstreetmap.org/export/embed.html?marker=${marker.lat},${marker.lon}&layer=mapnik`
+    ? (() => {
+        const lat = Number(marker.lat);
+        const lon = Number(marker.lon);
+        const box = [lon - 0.008, lat - 0.006, lon + 0.008, lat + 0.006].join("%2C");
+        return `https://www.openstreetmap.org/export/embed.html?bbox=${box}&layer=mapnik&marker=${marker.lat}%2C${marker.lon}`;
+      })()
     : `https://www.openstreetmap.org/export/embed.html?bbox=25.25%2C42.82%2C25.37%2C42.91&layer=mapnik`;
 
   return (
@@ -121,9 +126,14 @@ function MapPanel({ selected }: { selected: StudyItem | string }) {
         </div>
         <a href={searchUrl} target="_blank" rel="noreferrer">Отвори в OSM</a>
       </div>
-      <iframe title={`Карта за ${query}`} src={src} loading="lazy" />
+      <div className="map-frame">
+        <iframe title={`Карта за ${query}`} src={src} loading="lazy" />
+        <div className={`visual-pin ${marker ? "" : "fallback"}`} aria-hidden="true">
+          <span />
+        </div>
+      </div>
       <p className="map-note">
-        {loading ? "Търся точен маркер..." : marker ? "Намерен е маркер в OpenStreetMap." : "Показана е карта на Габрово. Отвори търсенето, ако няма точен маркер."}
+        {loading ? "Търся точен маркер..." : marker ? "Маркерът е центриран върху намереното място." : "Показана е карта на Габрово с ориентировъчен маркер. Отвори търсенето за по-точна позиция."}
       </p>
     </section>
   );
