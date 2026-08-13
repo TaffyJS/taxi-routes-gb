@@ -1,3 +1,4 @@
+@import "mapbox-gl/dist/mapbox-gl.css";
 @import "tailwindcss";
 
 :root {
@@ -116,6 +117,7 @@ h3 {
 
 .main-tabs button,
 .mode-row button,
+.action-row button,
 .question-card button,
 .primary {
   min-height: 42px;
@@ -129,9 +131,26 @@ h3 {
 
 .main-tabs button.active,
 .mode-row button.active,
+.action-row button.active,
 .primary {
   background: var(--green);
   color: #fff;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-row button:not(.primary):not(.active) {
+  border-color: var(--line);
+  background: #fff;
+}
+
+.compact-actions {
+  margin-top: 16px;
 }
 
 .workspace {
@@ -270,13 +289,87 @@ dd {
   text-decoration: none;
 }
 
-iframe {
+.map-canvas {
+  position: relative;
   width: 100%;
   height: 520px;
-  border: 0;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  background: #e5e0d5;
+  background: #dfe5dd;
+  overflow: hidden;
+}
+
+.map-canvas .mapboxgl-canvas {
+  outline: none;
+}
+
+.map-canvas .mapboxgl-ctrl-top-right {
+  top: 12px;
+  right: 12px;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  background: #dfe5dd;
+  place-items: center;
+  color: var(--ink-muted);
+  font-weight: 800;
+  text-align: center;
+  padding: 24px;
+  z-index: 2;
+}
+
+.map-pin {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 8px;
+  background: var(--green);
+  box-shadow: 0 12px 26px rgba(29, 27, 22, 0.28);
+  place-items: center;
+  transform: rotate(-45deg);
+}
+
+.map-pin span {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.map-pin.street-pin {
+  background: var(--blue);
+}
+
+.map-marker-card {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 4px;
+  width: min(360px, calc(100% - 32px));
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: 0 14px 36px rgba(29, 27, 22, 0.18);
+  padding: 12px 14px;
+}
+
+.map-marker-card strong {
+  color: var(--green-dark);
+  font-size: 0.82rem;
+}
+
+.map-marker-card span {
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.35;
 }
 
 .map-note {
@@ -410,7 +503,8 @@ textarea {
     display: grid;
   }
 
-  iframe {
+  .map-canvas {
     height: 380px;
   }
+
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import mapboxgl, { type Map as MapboxMap, type Marker } from "mapbox-gl";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type StudyMode = "random" | "manual";
 type PlaceType = "institution" | "tourism" | "street";
@@ -19,6 +20,21 @@ type RouteItem = {
   from: string;
   to: string;
   path: string[];
+};
+
+type MapboxFeature = {
+  center?: [number, number];
+  place_name?: string;
+};
+
+const mapProvider = process.env.EXPO_PUBLIC_MAP_PROVIDER ?? "mapbox";
+const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_PUBLIC_TOKEN ?? "";
+const gabrovoCenter = { lon: 25.3187, lat: 42.8742 };
+const gabrovoBounds = {
+  west: 25.2400,
+  south: 42.8100,
+  east: 25.4050,
+  north: 42.9400,
 };
 
 const places: StudyItem[] = [
@@ -79,28 +95,114 @@ function buildTest() {
 
 function queryFor(item: StudyItem | string) {
   const text = typeof item === "string" ? item : `${item.address}, ${item.name}`;
-  return `${text}, Габрово, България`;
+  return `${text}, град Габрово, област Габрово, България`;
+}
+
+function isInGabrovoCityBounds(lon: number, lat: number) {
+  return lon >= gabrovoBounds.west && lon <= gabrovoBounds.east && lat >= gabrovoBounds.south && lat <= gabrovoBounds.north;
+}
+
+function hasUsableMapboxToken() {
+  return mapProvider === "mapbox" && Boolean(mapboxToken);
+}
+
+function createMapMarkerElement(isStreet: boolean) {
+  const marker = document.createElement("div");
+  const dot = document.createElement("span");
+
+  marker.className = isStreet ? "map-pin street-pin" : "map-pin address-pin";
+  dot.setAttribute("aria-hidden", "true");
+  marker.append(dot);
+
+  return marker;
 }
 
 function MapPanel({ selected }: { selected: StudyItem | string }) {
-  const [marker, setMarker] = useState<{ lat: string; lon: string } | null>(null);
-  const [loading, setLoading] = useState(false);
   const query = queryFor(selected);
-  const searchUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`;
+  const mapCanvasRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const markerRef = useRef<Marker | null>(null);
+  const [mapState, setMapState] = useState<{
+    query: string;
+    marker: { lat: number; lon: number; label: string } | null;
+    error: string | null;
+    loading: boolean;
+  }>({ query, marker: null, error: null, loading: true });
+  const title = typeof selected === "string" ? selected : selected.name;
+  const isStreet = typeof selected === "string" || selected.type === "street";
+  const marker = mapState.query === query ? mapState.marker : null;
+  const loading = mapState.query !== query || mapState.loading;
+  const mapError = mapState.query === query ? mapState.error : null;
+  const mapLink = marker
+    ? `https://www.google.com/maps/search/?api=1&query=${marker.lat},${marker.lon}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+
+  useEffect(() => {
+    if (!mapCanvasRef.current || mapRef.current || !hasUsableMapboxToken()) {
+      return;
+    }
+
+    mapboxgl.accessToken = mapboxToken;
+
+    const map = new mapboxgl.Map({
+      center: [gabrovoCenter.lon, gabrovoCenter.lat],
+      container: mapCanvasRef.current,
+      maxBounds: [
+        [gabrovoBounds.west, gabrovoBounds.south],
+        [gabrovoBounds.east, gabrovoBounds.north],
+      ],
+      pitchWithRotate: false,
+      style: "mapbox://styles/mapbox/streets-v12",
+      zoom: 12,
+    });
+
+    mapRef.current = map;
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
+
+    return () => {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
-    setLoading(true);
-    setMarker(null);
 
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`)
-      .then((response) => response.ok ? response.json() : [])
-      .then((results: Array<{ lat: string; lon: string }>) => {
-        if (!ignore && results[0]) setMarker({ lat: results[0].lat, lon: results[0].lon });
+    if (!hasUsableMapboxToken()) {
+      queueMicrotask(() => {
+        if (!ignore) setMapState({ query, marker: null, error: "Mapbox token липсва.", loading: false });
+      });
+      return () => {
+        ignore = true;
+      };
+    }
+
+    const params = new URLSearchParams({
+      access_token: mapboxToken,
+      bbox: `${gabrovoBounds.west},${gabrovoBounds.south},${gabrovoBounds.east},${gabrovoBounds.north}`,
+      country: "bg",
+      language: "bg",
+      limit: "1",
+      proximity: `${gabrovoCenter.lon},${gabrovoCenter.lat}`,
+      autocomplete: "false",
+    });
+
+    fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params}`)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Mapbox geocoding failed"))))
+      .then((data: { features?: MapboxFeature[] }) => {
+        const feature = data.features?.[0];
+        if (!ignore && feature?.center && isInGabrovoCityBounds(feature.center[0], feature.center[1])) {
+          const [lon, lat] = feature.center;
+          setMapState({ query, marker: { lon, lat, label: feature.place_name ?? query }, error: null, loading: false });
+        }
+        if (!ignore && (!feature?.center || !isInGabrovoCityBounds(feature.center[0], feature.center[1]))) {
+          setMapState({ query, marker: null, error: "Не намерих точни координати в град Габрово.", loading: false });
+        }
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!ignore) setLoading(false);
+      .catch(() => {
+        if (!ignore) setMapState({ query, marker: null, error: "Mapbox търсенето не върна резултат.", loading: false });
       });
 
     return () => {
@@ -108,27 +210,72 @@ function MapPanel({ selected }: { selected: StudyItem | string }) {
     };
   }, [query]);
 
-  const src = marker
-    ? (() => {
-        const lat = Number(marker.lat);
-        const lon = Number(marker.lon);
-        const box = [lon - 0.008, lat - 0.006, lon + 0.008, lat + 0.006].join("%2C");
-        return `https://www.openstreetmap.org/export/embed.html?bbox=${box}&layer=mapnik&marker=${marker.lat}%2C${marker.lon}`;
-      })()
-    : `https://www.openstreetmap.org/export/embed.html?bbox=25.25%2C42.82%2C25.37%2C42.91&layer=mapnik`;
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!map || loading) {
+      return;
+    }
+
+    if (!marker) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      map.easeTo({
+        center: [gabrovoCenter.lon, gabrovoCenter.lat],
+        duration: 700,
+        zoom: 12,
+      });
+      return;
+    }
+
+    markerRef.current?.remove();
+    markerRef.current = new mapboxgl.Marker({
+      element: createMapMarkerElement(isStreet),
+    })
+      .setLngLat([marker.lon, marker.lat])
+      .addTo(map);
+
+    map.flyTo({
+      center: [marker.lon, marker.lat],
+      duration: 900,
+      essential: true,
+      zoom: isStreet ? 14.2 : 15.2,
+    });
+  }, [isStreet, loading, marker]);
 
   return (
     <section className="map-panel" aria-label="Карта">
       <div className="map-toolbar">
         <div>
-          <p className="eyebrow">Карта без API key</p>
-          <h2>{typeof selected === "string" ? selected : selected.name}</h2>
+          <p className="eyebrow">Mapbox карта</p>
+          <h2>{title}</h2>
         </div>
-        <a href={searchUrl} target="_blank" rel="noreferrer">Отвори в OSM</a>
+        <a href={mapLink} target="_blank" rel="noreferrer">Отвори картата</a>
       </div>
-      <iframe title={`Карта за ${query}`} src={src} loading="lazy" />
+      <div
+        ref={mapCanvasRef}
+        className="map-canvas"
+        role="application"
+        aria-label="Интерактивна Mapbox карта"
+      >
+        {!hasUsableMapboxToken() && (
+          <div className="map-empty">Настрой Mapbox token, за да се зареди картата.</div>
+        )}
+        {marker && (
+          <div className="map-marker-card" aria-live="polite">
+            <strong>{isStreet ? "Маркер за улица" : "Маркер за адрес"}</strong>
+            <span>{marker.label}</span>
+          </div>
+        )}
+      </div>
       <p className="map-note">
-        {loading ? "Търся точна позиция..." : marker ? "Картата е центрирана върху намереното място." : "Показана е карта на Габрово. Отвори търсенето за по-точна позиция."}
+        {loading
+          ? "Търся точна позиция в Mapbox..."
+          : marker
+            ? isStreet
+              ? "Улицата е показана с Mapbox marker."
+              : "Адресът е центриран и маркиран в Mapbox."
+            : mapError ?? "Показана е обща карта на Габрово."}
       </p>
     </section>
   );
@@ -138,12 +285,14 @@ export default function Home() {
   const [view, setView] = useState<"study" | "test">("study");
   const [studyMode, setStudyMode] = useState<StudyMode>("random");
   const [selectedId, setSelectedId] = useState(places[0].id);
+  const [mapTarget, setMapTarget] = useState<"address" | "street">("address");
   const [test, setTest] = useState(buildTest);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   const selected = useMemo(() => places.find((place) => place.id === selectedId) ?? places[0], [selectedId]);
   const randomItem = () => setSelectedId(pickMany(places, 1)[0].id);
   const relatedRoutes = routes.filter((route) => route.path.some((part) => part.includes(selected.street.replace(/^(ул\.|бул\.|пл\.) /, ""))));
+  const selectedForMap = mapTarget === "street" ? selected.street : selected;
 
   return (
     <main>
@@ -176,7 +325,11 @@ export default function Home() {
                   <div><dt>Адрес</dt><dd>{selected.address}</dd></div>
                   <div><dt>Подсказка</dt><dd>{selected.hint}</dd></div>
                 </dl>
-                <button className="primary" onClick={randomItem}>Дай ми следваща</button>
+                <div className="action-row">
+                  <button className="primary" onClick={randomItem}>Дай ми следваща</button>
+                  <button className={mapTarget === "address" ? "active" : ""} onClick={() => setMapTarget("address")}>Маркер адрес</button>
+                  <button className={mapTarget === "street" ? "active" : ""} onClick={() => setMapTarget("street")}>Маркер улица</button>
+                </div>
               </div>
             ) : (
               <div className="manual-layout">
@@ -193,6 +346,10 @@ export default function Home() {
                   <h2>{selected.name}</h2>
                   <p>{selected.address}</p>
                   <p className="muted">{selected.hint}</p>
+                  <div className="action-row compact-actions">
+                    <button className={mapTarget === "address" ? "active" : ""} onClick={() => setMapTarget("address")}>Маркер адрес</button>
+                    <button className={mapTarget === "street" ? "active" : ""} onClick={() => setMapTarget("street")}>Маркер улица</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -208,7 +365,7 @@ export default function Home() {
             </div>
           </section>
 
-          <MapPanel selected={selected} />
+          <MapPanel selected={selectedForMap} />
         </div>
       ) : (
         <section className="test-panel">
